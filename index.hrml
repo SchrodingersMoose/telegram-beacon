@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Derkins Lighthouse Beacon</title>
+  <style>
+    :root { --dim: 200px; }
+    body { font-family: system-ui, sans-serif; text-align:center; padding: 24px; background:#111; color:#eee; }
+    .beacon { width: var(--dim); height: var(--dim); border-radius: 50%;
+      background:#333; margin: 40px auto; transition: box-shadow .3s, background .3s; }
+    .beacon.on { background: gold; box-shadow: 0 0 50px 25px gold; }
+    .log { max-width: 720px; margin: 16px auto; text-align:left; font-size: 14px; }
+    .log h2 { font-size: 16px; margin: 8px 0; }
+    .log ul { list-style: none; padding: 0; }
+    .log li { padding: 6px 0; border-bottom: 1px solid #333; }
+    .muted { opacity: .7; }
+  </style>
+</head>
+<body>
+  <h1>Derkins Lighthouse Beacon</h1>
+  <div id="beacon" class="beacon"></div>
+  <p id="status">Connecting…</p>
+  <div class="log">
+    <h2>Recent Messages</h2>
+    <ul id="logs"></ul>
+  </div>
+
+  <!-- Firebase SDKs -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getDatabase, ref, onValue, query, limitToLast } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+    import { getAnalytics } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-analytics.js";
+
+    // Your Firebase configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyDhl3yiiY1ZZgFtH2FKyS8eUM6QvwwaAEs",
+      authDomain: "dirkins-lighthouse.firebaseapp.com",
+      databaseURL: "https://dirkins-lighthouse-default-rtdb.firebaseio.com",
+      projectId: "dirkins-lighthouse",
+      storageBucket: "dirkins-lighthouse.firebasestorage.app",
+      messagingSenderId: "1084756071269",
+      appId: "1:1084756071269:web:6f8257a1a708c47498478c",
+      measurementId: "G-JZM21XYRC1"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    getAnalytics(app);
+
+    const elBeacon = document.getElementById('beacon');
+    const elStatus = document.getElementById('status');
+    const elLogs = document.getElementById('logs');
+
+    // Listen for beacon state
+    const beaconRef = ref(db, '/beacon');
+    onValue(beaconRef, (snapshot) => {
+      const v = snapshot.val();
+      const now = Date.now();
+      const on = v && v.on && v.expiresAt > now;
+      elBeacon.classList.toggle('on', !!on);
+      elStatus.textContent = on
+        ? `ON — until ${new Date(v.expiresAt).toLocaleTimeString()}`
+        : 'OFF';
+    });
+
+    // Listen for logs
+    const logsRef = query(ref(db, '/logs'), limitToLast(20));
+    onValue(logsRef, (snapshot) => {
+      const items = [];
+      snapshot.forEach(c => {
+        const v = c.val();
+        items.push(
+          `<li><span class="muted">${new Date(v.receivedAt).toLocaleString()}</span> — <strong>${v.from || 'anon'}</strong>: ${v.body}</li>`
+        );
+      });
+      elLogs.innerHTML = items.reverse().join('');
+    });
+  </script>
+</body>
+</html>
