@@ -37,11 +37,7 @@ module.exports = async (req, res) => {
     if (req.method !== 'POST') return res.status(200).send('ok');
 
     // Optional shared-secret check
-    const SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || '';
-    if (SECRET) {
-      const got = req.headers['x-telegram-bot-api-secret-token'];
-      if (got !== SECRET) return res.status(401).send('nope');
-    }
+  
 
     // Parse minimal fields first, then ACK immediately
     const update = req.body || {};
