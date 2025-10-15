@@ -1,0 +1,67 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Beacon</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --dim: 200px; }
+    body { font-family: system-ui, sans-serif; text-align:center; padding: 24px; }
+    .beacon { width: var(--dim); height: var(--dim); border-radius: 50%;
+      background:#222; margin: 40px auto; transition: box-shadow .2s, background .2s; }
+    .beacon.on { background: gold; box-shadow: 0 0 40px 20px gold; }
+    .log { max-width: 720px; margin: 16px auto; text-align:left; font-size: 14px; }
+    .log h2 { font-size: 16px; margin: 8px 0; }
+    .log ul { list-style: none; padding: 0; }
+    .log li { padding: 6px 0; border-bottom: 1px solid #eee; }
+    .muted { opacity: .7; }
+  </style>
+</head>
+<body>
+  <h1>Beacon</h1>
+  <div id="beacon" class="beacon"></div>
+  <p id="status">Connecting…</p>
+  <div class="log"><h2>Recent Messages</h2><ul id="logs"></ul></div>
+
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+  <script>
+    // ---- paste your Firebase web config here ----
+    const firebaseConfig = {
+      apiKey: "YOUR_API_KEY",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+      projectId: "YOUR_PROJECT",
+      storageBucket: "YOUR_PROJECT.appspot.com",
+      messagingSenderId: "123",
+      appId: "1:123:web:abc"
+    };
+    // --------------------------------------------
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const beaconRef = db.ref('/beacon');
+    const logsRef = db.ref('/logs').limitToLast(20);
+
+    const elBeacon = document.getElementById('beacon');
+    const elStatus = document.getElementById('status');
+    const elLogs = document.getElementById('logs');
+
+    function renderBeacon(snap) {
+      const v = snap.val(); const now = Date.now();
+      const on = v && v.on && v.expiresAt > now;
+      elBeacon.classList.toggle('on', !!on);
+      elStatus.textContent = on ? `ON — until ${new Date(v.expiresAt).toLocaleTimeString()}` : 'OFF';
+    }
+    function renderLogs(snap) {
+      const items=[]; snap.forEach(c=>{
+        const v=c.val();
+        items.push(`<li><span class="muted">${new Date(v.receivedAt).toLocaleString()}</span> — <strong>${v.from||'anon'}</strong>: ${v.body}</li>`);
+      });
+      elLogs.innerHTML = items.reverse().join('');
+    }
+    beaconRef.on('value', renderBeacon);
+    logsRef.on('value', renderLogs);
+  </script>
+</body>
+</html>
