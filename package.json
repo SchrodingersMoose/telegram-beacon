@@ -1,0 +1,12 @@
+{
+  "name": "telegram-beacon",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "vercel dev",
+    "start": "vercel dev"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.5.0"
+  }
+}
