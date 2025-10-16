@@ -1,19 +1,14 @@
-// api/tg-webhook.js
-// Fast-ACK Telegram webhook -> Firebase Realtime DB beacon (with key normalization)
+// api/tg-webhook.js — debug-friendly & handles more update types
 
 const admin = require('firebase-admin');
 
-let db = null;
-
-function ensureFirebase() {
+let db=null;
+function ensureFirebase(){
   if (db) return db;
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   if (!raw) throw new Error('Missing FIREBASE_SERVICE_ACCOUNT_JSON');
   const svc = JSON.parse(raw);
-  if (svc.private_key && typeof svc.private_key === 'string') {
-    // Convert literal "\n" into real newlines
-    svc.private_key = svc.private_key.replace(/\\n/g, '\n');
-  }
+  if (svc.private_key) svc.private_key = String(svc.private_key).replace(/\\n/g, '\n');
   if (!admin.apps.length) {
     admin.initializeApp({
       credential: admin.credential.cert(svc),
@@ -25,62 +20,73 @@ function ensureFirebase() {
 }
 
 function parseDuration(text, fallbackMs) {
-  const m = String(text || '').trim().match(/^(\d+)\s*([smh]?)$/i);
+  const m = String(text||'').trim().match(/^(\d+)\s*([smh]?)$/i);
   if (!m) return fallbackMs;
-  const n = parseInt(m[1], 10);
-  const unit = (m[2] || 's').toLowerCase();
-  return Math.max(1000, n * (unit === 'h' ? 3600_000 : unit === 'm' ? 60_000 : 1000));
+  const n = parseInt(m[1],10);
+  const unit = (m[2]||'s').toLowerCase();
+  return Math.max(1000, n * (unit==='h'?3600_000 : unit==='m'?60_000 : 1000));
+}
+
+function extractMessage(update) {
+  // Support DMs, groups, channels, edits, and callback queries
+  const msg =
+    update.message ||
+    update.edited_message ||
+    update.channel_post ||
+    update.edited_channel_post ||
+    (update.callback_query && {
+      // synthesize a "message-like" object
+      text: update.callback_query.data,
+      from: update.callback_query.from,
+      chat: update.callback_query.message?.chat
+    }) ||
+    null;
+  return msg;
 }
 
 module.exports = async (req, res) => {
   try {
     if (req.method !== 'POST') return res.status(200).send('ok');
 
-    // Optional shared-secret check
-  
-
-    // Parse minimal fields first, then ACK immediately
     const update = req.body || {};
-    const msg = update.message || update.edited_message || null;
+    const msg = extractMessage(update);
 
-    // ACK ASAP so Telegram doesn't time out
+    // Always ACK so Telegram won't time out
     res.status(200).send('ok');
 
-    if (!msg) return;
-
+    // From here on, do best-effort work and log what we saw
     const db = ensureFirebase();
+    const now = Date.now();
+
+    // Log the raw update (trimmed) to /debug so we can see what Telegram sent
+    const debugPayload = {
+      at: now,
+      hasMessage: !!msg,
+      text: msg?.text || msg?.caption || null,
+      from: msg?.from?.username
+        ? '@' + msg.from.username
+        : [msg?.from?.first_name, msg?.from?.last_name].filter(Boolean).join(' ') || null,
+      chatId: msg?.chat?.id || null,
+      updateKeys: Object.keys(update || {})
+    };
+    await db.ref('/debug/lastUpdate').set(debugPayload);
+
+    if (!msg) return; // nothing actionable
 
     const text = (msg.text || msg.caption || '').trim();
-    const from = msg.from?.username
-      ? '@' + msg.from.username
-      : [msg.from?.first_name, msg.from?.last_name].filter(Boolean).join(' ') || 'unknown';
-
-    const now = Date.now();
+    const from = debugPayload.from || 'unknown';
     const defaultMs = Math.max(1000, (parseInt(process.env.BEACON_SECONDS || '30', 10) * 1000));
 
-    if (/^\/off\b/i.test(text)) {
-      await Promise.all([
-        db.ref('/logs').push({ from, body: text, chatId: msg.chat?.id, receivedAt: now }),
-        db.ref('/beacon').set({
-          on: false,
-          expiresAt: now,
-          lastMessage: { from, body: text, receivedAt: now }
-        })
-      ]);
-      return;
-    }
-
     let durationMs = defaultMs;
-    if (/^\/on\b/i.test(text)) {
-      durationMs = parseDuration(text.replace(/^\/on/i, '').trim(), defaultMs);
-    }
+    if (/^\/off\b/i.test(text)) durationMs = 0;
+    else if (/^\/on\b/i.test(text)) durationMs = parseDuration(text.replace(/^\/on/i,'').trim(), defaultMs);
 
-    const expiresAt = now + durationMs;
+    const expiresAt = now + (durationMs || 0);
 
     await Promise.all([
       db.ref('/logs').push({ from, body: text || '[non-text]', chatId: msg.chat?.id, receivedAt: now }),
       db.ref('/beacon').set({
-        on: true,
+        on: durationMs > 0,
         expiresAt,
         lastMessage: { from, body: text || '[non-text]', receivedAt: now }
       })
@@ -90,3 +96,4 @@ module.exports = async (req, res) => {
     try { if (!res.headersSent) res.status(200).send('ok'); } catch {}
   }
 };
+
