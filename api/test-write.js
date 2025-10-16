@@ -22,7 +22,7 @@ module.exports = async (req, res) => {
     const now = Date.now();
     await db.ref('/logs').push({ from:'test-endpoint', body:'hello', receivedAt: now });
     await db.ref('/beacon').set({
-      on:true, expiresAt: now + 15000,
+      on:true, expiresAt: now + 150000,
       lastMessage: { from:'test-endpoint', body:'hello', receivedAt: now }
     });
     res.status(200).json({ ok:true });
