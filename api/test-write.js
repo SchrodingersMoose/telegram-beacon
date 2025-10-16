@@ -1,4 +1,5 @@
 // /api/test-write.js
+//test
 const admin = require('firebase-admin');
 let db=null;
 function ensureFirebase(){
