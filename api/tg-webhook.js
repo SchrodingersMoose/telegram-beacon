@@ -96,4 +96,3 @@ module.exports = async (req, res) => {
     try { if (!res.headersSent) res.status(200).send('ok'); } catch {}
   }
 };
-
